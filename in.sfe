@@ -1,0 +1,78 @@
+units		metal
+boundary	p s p
+atom_style	atomic
+
+variable	dx equal sqrt(2)	# lattice spacing along x
+variable	dy equal sqrt(3)
+variable	dz equal sqrt(6)/2
+
+variable	n equal 100		# total steps /2
+variable	xbox equal 30	# the duplicate times along x
+variable	a equal (xhi-xlo)/${dx}/${xbox}	# lattice constant
+
+read_data	data/data.$i
+
+pair_style	eam/alloy
+pair_coeff	* * ../../p_func/FeNiCrCoCu-heafixed.setfl Fe Ni Cr Co Cu
+
+mass		1 55.847 # Fe
+mass		2 58.690 # Ni
+mass		3 51.960 # Cr
+mass		4 58.933 # Co
+mass		5 63.546 # Cu
+
+# ------------ set variable --------------
+variable	xhalf equal (xhi+xlo)/2
+variable	yhalf equal (yhi+ylo)/2
+variable	zhalf equal (zhi+zlo)/2
+variable	dxpstep equal $a/sqrt(6)/$n*sqrt(3)/2	# displacement increment along x
+variable	dzpstep equal $a/sqrt(6)/$n/2
+variable	y3 equal ${yhalf}+0.25*${dy}*$a		# atomic layer above the slip plane
+variable	y4 equal ${yhalf}-0.25*${dy}*$a		# ... below ...
+# -------------select upper and lower layer------------------
+region		upper1 plane ${xhalf} ${yhalf} ${zhalf} 0 1 0 units box
+group		upper1 region upper1	# atoms above the slip plane
+
+region		amsup plane ${xhalf} ${y3} ${zhalf} 0 -1 0 units box
+region		amslo plane ${xhalf} ${y4} ${zhalf} 0 1 0 units box
+group		amsup region amsup
+group		amslo region amslo
+group		ams intersect amsup amslo	# atoms near the slip plane
+
+compute		Eperatom cal pe/atom
+compute		Eperams ams pe/atom
+
+# ----------- move atoms to form stacking fault -------------
+thermo		1
+thermo_style	custom step temp etotal pe ke pxx pyy pzz c_Eatoms
+
+
+fix		1 all setforce 0.0 NULL 0.0
+fix		2 all aveforce NULL 0.0 NULL
+minimize	1e-15 1e-15 100000 100000
+
+dump		1 ams custom 100000 dump/gsf_$i_*.dump id mass type x y z c_Eperams
+dump_modify	1 element Fe Ni Cr Co Cu sort id
+
+variable	m loop $n
+label		loop
+
+displace_atoms	upper1 move ${dxpstep} 0.0 ${dzpstep} units box
+minimize	1e-15 1e-15 100000 100000
+run		1
+
+next		m
+jump		SELF loop
+
+variable	j loop $n
+label		loop2
+variable	k equal v_j+$n
+
+displace_atoms	upper1 move ${dxpstep} 0.0 -${dzpstep} units box
+minimize	1e-15 1e-15 100000 100000
+run		1
+print		"$k ${deltaE}" append txt/gsfe_$i.txt screen no
+
+next		j
+jump		SELF loop2
+
