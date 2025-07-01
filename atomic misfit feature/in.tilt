@@ -1,0 +1,48 @@
+units		metal
+atom_style	atomic
+boundary	p p p
+
+variable	ndelta equal 450
+read_data	data/data.${a}	
+
+pair_style	eam/alloy
+pair_coeff	* * ../p_func/FeNiCrCoCu-heafixed.setfl Fe Ni Cr Co Cu
+
+mass		1 55.847 # Fe
+mass		2 58.693 # Ni
+mass		3 51.960 # Cr
+mass		4 58.933 # Co
+mass		5 63.546 # Cu
+
+# --------compute shear modulus--------
+change_box	all triclinic
+compute		peatom all pe/atom
+compute		petot all pe
+compute		vor all voronoi/atom
+variable	xy0 equal xy
+variable	ly0 equal ly
+variable	V0 equal vol
+
+print		"Volume ${V0}" append txt/tilt.${a}.txt screen no
+dump		compress_dump all custom 1000000 txt/tilt/tilt_${a}_*.dump id type x y z c_vor[1] c_peatom
+dump_modify	compress_dump element Fe Ni Cr Co Cu sort id
+
+thermo_style	custom step vol pe
+thermo 		10
+variable	strain equal (xy-${xy0})/${ly0}
+variable	Pe equal c_petot
+# fix 		compress_data all print 10 "${strain} ${Pe}" append txt/tilt_${a}.txt screen no
+
+label		loop
+variable	loopa loop ${ndelta}
+
+fix 		1 all deform 1 xy delta 0.01 units box 
+
+run		1
+minimize	1e-15 1e-15 100000 100000
+print		"${loopa} ${strain} ${Pe}" append txt/tilt_${a}.txt screen no
+next		loopa
+jump		SELF loop
+
+
+

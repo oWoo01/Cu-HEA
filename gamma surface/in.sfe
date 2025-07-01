@@ -1,0 +1,108 @@
+units		metal
+boundary	p s p
+atom_style	atomic
+
+variable	dx equal sqrt(2)
+variable	dy equal sqrt(3)
+variable	dz equal sqrt(6)/2
+
+read_data	data/data.2
+variable	n equal 50 
+variable	a equal 3.552933253
+
+pair_style	eam/alloy
+pair_coeff	* * ../p_func/FeNiCrCoCu-heafixed.setfl Fe Ni Cr Co Cu
+
+mass		1 55.847 # Fe
+mass		2 58.690 # Ni
+mass		3 51.960 # Cr
+mass		4 58.933 # Co
+mass		5 63.546 # Cu
+
+# ------------ set variable --------------
+# change_box	all y delta -10 10 units box
+variable	xhalf equal (xhi+xlo)/2
+variable	yhalf equal (yhi+ylo)/2
+variable	zhalf equal (zhi+zlo)/2
+variable	dpstep equal $a*sqrt(6)/$n
+variable	dxstep equal $a*sqrt(2)/$n
+variable	y1 equal ${yhalf}+5*${dy}*$a
+variable	y2 equal ${yhalf}-5*${dy}*$a
+variable	y3 equal ${yhalf}
+variable	y4 equal ${yhalf}-1*${dy}*$a+2
+# -------------select upper and lower layer------------------
+region		upper1 plane ${xhalf} ${yhalf} ${zhalf} 0 1 0 units box
+group		upper1 region upper1
+
+region		calup plane ${xhalf} ${y1} ${zhalf} 0 -1 0 units box
+region		callo plane ${xhalf} ${y2} ${zhalf} 0 1 0 units box
+group		calup region calup
+group		callo region callo
+group		cal intersect calup callo
+
+# region		amsup plane ${xhalf} ${y3} ${zhalf} 0 -1 0 units box
+# region		amslo plane ${xhalf} ${y4} ${zhalf} 0 1 0 units box
+# group		amsup region amsup
+# group		amslo region amslo
+# group		ams intersect amsup amslo
+region		amsb block 60 70 ${y4} ${y3} 60 70 units box
+group		ams region amsb
+
+compute		Eperatom cal pe/atom
+compute		Eatoms cal reduce ave c_Eperatom
+# ----------- move atoms along [112]-------------
+thermo		100
+thermo_style	custom step temp etotal pe ke pxx pyy pzz c_Eatoms
+
+# dump		1 all custom 100 gsf.dump id mass type xs ys zs
+# dump_modify	1 element Cu sort id
+
+dump		1 ams custom 100000 txt/gamma_atomic_*.dump id mass type xs ys zs c_Eperatom
+dump_modify	1 element Fe Ni Cr Co Cu sort id
+
+fix		2 all setforce 0.0 NULL 0.0
+minimize	1e-15 1e-15 100000 100000
+run		0
+
+variable	E00 equal c_Eatoms
+variable	E0 equal ${E00}
+variable	E equal c_Eatoms
+variable	deltaE equal (v_E-v_E0)/lx/lz*1.602*10000   # mJ/m2
+print		"0 0 ${deltaE}" append txt/gamma_tot.txt screen no
+
+variable	k loop $n
+label		loopx
+variable	nowx1 equal ($k-1)/$n
+
+variable	m loop $n
+label		loopz1
+
+variable	nowz1 equal $m/$n
+displace_atoms	upper1 move 0.0 0.0 ${dpstep} units box
+minimize	1e-15 1e-15 100000 100000
+run		0
+print		"${nowx1} ${nowz1} ${deltaE}" append txt/gamma_tot.txt screen no
+
+next		m
+jump		SELF loopz1
+
+displace_atoms	upper1 move ${dxstep} 0.0 0.0 units box
+minimize	1e-15 1e-15 100000 100000
+variable	nowx2 equal $k/$n
+print		"${nowx2} ${nowz1} ${deltaE}" append txt/gamma_tot.txt screen no
+
+variable	l loop $n
+label		loopz2
+
+variable	nowz2 equal 1-$l/$n
+displace_atoms	upper1 move 0.0 0.0 -${dpstep} units box
+minimize	1e-15 1e-15 100000 100000
+run		0
+print		"${nowx2} ${nowz2} ${deltaE}" append txt/gamma_tot.txt screen no
+
+next		l
+jump		SELF loopz2
+
+next		k
+jump		SELF loopx
+

@@ -1,0 +1,61 @@
+units 		metal
+boundary	p p p
+atom_style	atomic
+
+variable	LC equal 3.552
+variable	prop equal $a/100
+variable	bb equal (100-$a)/4
+variable	b1 equal (${bb}-1)/100
+variable	b2 equal ${bb}/100
+variable	b3 equal (${bb}+1)/100
+
+variable	b index ${b1} ${b2} ${b3} 
+variable	x equal $b/(1-${prop}) 
+
+lattice		fcc ${LC}
+region		box block 0.0 15 0.0 15 0.0 15
+create_box	5 box
+create_atoms	1 box
+
+set		type 1 type/ratio 5 ${prop} ${random}
+set		type 1 type/ratio 4 $x ${random}
+set		type 1 type/ratio 2 0.3333333 ${random}
+set		type 1 type/ratio 3 0.5 ${random}
+
+pair_style	eam/alloy
+pair_coeff	* * ../p_func/FeNiCrCoCu-heafixed.setfl ${E1} ${E2} ${E3} ${E4} Cu
+
+mass		1 ${m1} # Fe
+mass		2 ${m2} # Ni
+mass		3 ${m3} # Cr
+mass		4 ${m4} # Co
+mass		5 63.546 # Cu
+
+minimize	1e-15 1e-15 100000 100000
+
+fix		1 all box/relax iso 1.0
+minimize	1e-15 1e-15 100000 100000
+
+unfix		1
+minimize	1e-15 1e-15 100000 100000
+
+fix		1 all box/relax iso 1.0
+minimize	1e-15 1e-15 100000 100000
+
+unfix		1
+minimize	1e-15 1e-15 100000 100000
+
+fix		1 all box/relax iso 1.0
+minimize	1e-15 1e-15 100000 100000
+
+variable	xlength equal lx
+variable	ylength equal ly
+variable	zlength equal lz
+variable	length equal (lx+ly+lz)/3
+variable	lc equal ${length}/15
+
+print		'${prop} ${E4} ${i} $b ${lc}' append lc.txt
+
+clear
+next		b
+jump		SELF 

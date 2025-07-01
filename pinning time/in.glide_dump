@@ -1,0 +1,139 @@
+units		metal
+boundary	p p p
+atom_style	atomic
+timestep	0.004
+
+variable	numtt loop 1
+variable	tt index 350 
+variable	tau equal ${tt}*10	# stress(bar)
+
+variable	nevery equal 50		# update frequency
+
+variable	dx equal sqrt(2)
+variable	dy equal sqrt(3)
+variable	dz equal sqrt(6)/2
+
+variable	xbox equal 180
+variable	lc equal (xhi-xlo)/${dx}/${xbox}
+
+read_data	data/data.${a}_$TK
+
+pair_style	eam/alloy
+pair_coeff	* * ../p_func/FeNiCrCoCu-heafixed.setfl Fe Ni Cr Co Cu
+
+mass		1 55.847 # Fe
+mass		2 58.693 # Ni
+mass		3 51.960 # Cr
+mass		4 58.933 # Co
+mass		5 63.546 # Cu
+
+variable	yh equal yhi-10.0
+variable	yl equal ylo+10.0
+variable	h equal 5.0  # surface thickness
+variable	xhalf equal (xhi+xlo)/2
+variable	yhalf equal (yhi+ylo)/2
+variable	zhalf equal (zhi+zlo)/2
+variable	y1 equal ${yh}-${h}
+variable	y2 equal ${yl}+${h}
+
+variable	energyconv equal 1602191.7
+
+# set surface atoms
+region		top plane ${xhalf} ${y1} ${zhalf} 0 1 0 units box
+region		bot plane ${xhalf} ${y2} ${zhalf} 0 -1 0 units box
+group		top region top
+group		bot region bot
+group		surface union top bot
+group		mobile subtract all surface
+
+# ------------dislocation glide--------------
+variable	ntop equal count(top)  # number of atoms in top
+variable	tmp2 equal lx
+variable	tmp3 equal lz
+variable	tmp4 equal v_tmp2*v_tmp3/v_ntop*v_tau/v_energyconv
+variable	ftop equal ${tmp4}
+
+variable	nbot equal count(bot)
+variable	tmp5 equal v_tmp2*v_tmp3/v_nbot*v_tau/v_energyconv
+variable	fbot equal -${tmp5}
+
+compute		myTemp mobile temp
+
+# --record the position of disl--
+compute		cna mobile cna/atom 3
+variable	hcp atom c_cna==2   # (c_cna-1)
+group		atoms dynamic mobile var hcp every ${nevery}
+compute		xx atoms property/atom x
+compute		cx atoms com
+
+variable	shift equal 0
+variable	atoms1 atom c_xx>xcm(mobile,x)
+variable	atoms2 atom (c_xx<xcm(mobile,x))&&(c_xx!=0)
+group		atoms1 dynamic mobile var atoms1 every ${nevery}
+group		atoms2 dynamic mobile var atoms2 every ${nevery}
+variable	n1 equal count(atoms1)
+variable	n2 equal count(atoms2)
+compute		x1 atoms1 reduce sum c_xx
+compute		x2 atoms2 reduce sum c_xx 
+variable	dislx1 equal (c_x1+(v_shift-1)*lx*v_n1)/(v_n1+v_n2)
+variable	dislx2 equal (c_x2+v_shift*lx*v_n2)/(v_n1+v_n2)
+
+variable	dislx_0 equal c_cx[1]+v_shift*lx 
+variable	dislx_1 equal v_dislx1+v_dislx2
+
+# --record the pinning time of SF--
+variable	y3 equal ${yhalf}+0.35*${dy}*${lc}
+variable	y4 equal ${yhalf}-0.25*${dy}*${lc}
+region		sfup plane ${xhalf} ${y3} ${zhalf} 0 -1 0 units box
+region		sflo plane ${xhalf} ${y4} ${zhalf} 0 1 0 units box
+group		sfup region sfup
+group		sflo region sflo
+group		sf intersect sfup sflo
+
+# dump		1 sf custom 100000 data/sf.cfg id mass type xs ys zs
+# dump_modify	1 element Fe Ni Cr Co Cu sort id
+
+compute		grid sf chunk/atom bin/2d x lower 10 z lower 10 units box nchunk once ids once
+fix		ave_grid sf ave/chunk 1 1 ${nevery} grid v_hcp file txt/grid_fault_${a}.out
+compute		fcount sf reduce/chunk grid sum v_hcp
+compute		ncount sf property/chunk grid count
+compute		fcount_spread sf chunk/spread/atom grid c_fcount
+compute		ncount_spread sf chunk/spread/atom grid c_ncount
+
+velocity	top set 0.0 0.0 0.0 units box
+velocity	bot set 0.0 0.0 0.0 units box
+
+fix		1 top setforce NULL 0.0 NULL
+fix		2 bot setforce NULL 0.0 NULL
+fix		3 top aveforce ${ftop} 0.0 0.0
+fix		4 bot aveforce ${fbot} 0.0 0.0
+fix		5 top nve
+fix		6 bot nve
+fix		7 mobile npt temp $T $T $(100*dt) aniso 1.0 1.0 $(1000*dt) 
+fix_modify	7 temp myTemp
+
+dump		1 atoms cfg ${nevery} dump/$a_hcp_*.cfg mass type xs ys zs
+dump_modify	1 element Fe Ni Cr Co Cu sort id 
+
+# dump		2 sf cfg 20000 dump/chunkid_${a}_*.cfg mass type xs ys zs c_grid c_fcount_spread c_ncount_spread
+# dump_modify	2 element Fe Ni Co Cr Cu sort id 
+
+# restart		50 restart/$a_$TK_${tt}MPa.restart1 restart/$a_$TK_${tt}MPa.restart2
+
+variable	flag equal 0
+variable	xx1 equal c_x1
+variable	xx2 equal c_x2
+variable	pe_ equal pe 
+compute		peatom mobile pe/atom
+compute		pemobile mobile reduce sum c_peatom
+variable	pemobile_ equal c_pemobile
+variable	etotal_ equal etotal
+variable	dislx equal 0000
+variable	boundsf equal bound(atoms,xmax)
+variable	boundmb equal bound(mobile,xmax)
+variable	delta equal abs(v_boundsf-v_boundmb)
+
+thermo		50
+thermo_style	custom step dt time etotal c_myTemp press pxx pyy pzz pxy pyz pxz v_dislx v_pemobile_
+ 
+run		20000	
