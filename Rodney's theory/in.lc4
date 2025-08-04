@@ -1,0 +1,41 @@
+units		metal
+boundary	p p p
+atom_style	atomic
+
+variable    nloop loop 5
+variable	random index 54138 85354 30618 97106 10472
+
+read_data	ini.lmp extra/atom/types 3 
+
+set		type 1 type/subset 2 ${N2} ${random}
+set		type 1 type/subset 3 ${N3} ${random}
+set		type 1 type/subset 4 ${N4} ${random}
+
+pair_style	eam/alloy
+pair_coeff	* * /home/jyzhang/lammps/Rodney/NbMoTaW_Zhou04.eam.alloy Nb Mo Ta W
+
+mass    1 92.91
+mass    2 95.96
+mass    3 180.95
+mass    4 183.84
+
+fix		1 all box/relax iso 0.0
+minimize	1e-10 1e-10 100000 100000
+
+unfix		1
+minimize	1e-10 1e-10 100000 100000
+
+fix		1 all box/relax iso 0.0
+minimize	1e-10 1e-10 100000 100000
+
+unfix		1
+minimize	1e-15 1e-15 100000 100000
+
+variable    lc equal (lx+ly+lz)/3/20
+
+print       "${lc}" append ${filename} screen no
+
+clear
+next        nloop
+next        random
+jump        SELF

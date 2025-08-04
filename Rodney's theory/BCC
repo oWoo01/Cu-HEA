@@ -1,0 +1,20 @@
+Old lattice:
+-0.5    0.5     0.5
+0.5     -0.5    0.5
+0.5     0.5     -0.5
+Number of atoms in old unit cell:
+1
+symbol          s0              s1              s2
+Nb              0.              0.              0.
+
+New origin:
+0.      0.      0.
+New lattice:
+1     0    0
+0     1     0
+0     0     1
+
+View with multiplicities and lattice constant [A]:
+10       10       10      3.32 
+Save configuration on file (default=/tmp/config):
+ini.cfg
